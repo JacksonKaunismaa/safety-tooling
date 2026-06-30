@@ -313,12 +313,17 @@ class OpenAIChatModel(OpenAIModel):
 
         responses = []
         for choice, generated_content in zip(choices, all_generated_content):
-            if choice.message.content is None or choice.finish_reason is None:
+            # vLLM / OpenRouter reasoning models can return the CoT in a separate
+            # reasoning_content field, sometimes with empty/None content. Surface it and
+            # don't crash on a CoT-only response. (Additive; normal responses unchanged.)
+            reasoning_content = getattr(choice.message, "reasoning_content", None)
+            if (choice.message.content is None and reasoning_content is None) or choice.finish_reason is None:
                 raise RuntimeError(f"No content or finish reason for {model_id}")
             responses.append(
                 LLMResponse(
                     model_id=model_id,
-                    completion=choice.message.content,
+                    completion=choice.message.content or "",
+                    reasoning_content=reasoning_content,
                     stop_reason=choice.finish_reason,
                     api_duration=api_duration,
                     duration=duration,
