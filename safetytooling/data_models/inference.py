@@ -69,6 +69,11 @@ class Usage(pydantic.BaseModel):
 class LLMResponse(pydantic.BaseModel):
     model_id: str
     completion: str
+    # Provider reasoning/CoT tokens, when the provider returns them separately from the
+    # visible content (e.g. OpenRouter `message.reasoning` for thinking models). None when
+    # the provider doesn't surface reasoning. Additive/optional — does not affect callers
+    # that ignore it or providers that don't set it.
+    reasoning_content: str | None = None
     stop_reason: StopReason | GeminiStopReason | GeminiBlockReason
     cost: float = 0
     generated_content: List[ChatMessage] | None = None

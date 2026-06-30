@@ -237,6 +237,24 @@ class OpenRouterChatModel(InferenceAPIModel):
 
         return response_data, all_generated_content
 
+    @staticmethod
+    def _extract_reasoning(message) -> str | None:
+        """Pull a thinking model's reasoning/CoT tokens off an OpenRouter response message.
+
+        OpenRouter returns them in `message.reasoning` (some providers: `reasoning_content`)
+        when reasoning is enabled; the OpenAI client may also stash unknown fields under
+        `model_extra`. Returns None when absent (non-thinking response) — additive, never
+        raises, so callers that ignore it are unaffected.
+        """
+        for attr in ("reasoning", "reasoning_content"):
+            val = getattr(message, attr, None)
+            if val:
+                return val
+        extra = getattr(message, "model_extra", None)
+        if isinstance(extra, dict):
+            return extra.get("reasoning") or extra.get("reasoning_content")
+        return None
+
     async def __call__(
         self,
         model_id: str,
@@ -360,6 +378,7 @@ class OpenRouterChatModel(InferenceAPIModel):
                     LLMResponse(
                         model_id=model_id,
                         completion=choice.message.content or "",
+                        reasoning_content=self._extract_reasoning(choice.message),
                         generated_content=[self._convert_message_to_chat_message(choice.message)],
                         stop_reason=choice.finish_reason,
                         api_duration=api_duration,
@@ -378,6 +397,7 @@ class OpenRouterChatModel(InferenceAPIModel):
                 LLMResponse(
                     model_id=model_id,
                     completion=completion,
+                    reasoning_content=self._extract_reasoning(response_data.choices[0].message),
                     generated_content=generated_content,
                     stop_reason=response_data.choices[0].finish_reason,
                     api_duration=api_duration,
