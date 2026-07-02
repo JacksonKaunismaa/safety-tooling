@@ -11,6 +11,8 @@ from openai import AsyncOpenAI, BadRequestError
 from safetytooling.data_models import ChatMessage, LLMResponse, MessageRole, Prompt
 from safetytooling.utils.tool_utils import convert_tools_to_openai
 
+from .openai.base import API_CALL_TIMEOUT_SECONDS
+
 from .model import InferenceAPIModel
 
 OPENROUTER_MODELS = {
@@ -46,9 +48,13 @@ class OpenRouterChatModel(InferenceAPIModel):
         self.num_threads = num_threads
         self.prompt_history_dir = prompt_history_dir
         if api_key is not None:
+            # Same rationale as openai/base.py: the SDK's default 600s timeout + 2 hidden
+            # retries starves slow judge calls under provider load; our outer loop owns retries.
             self.aclient = AsyncOpenAI(
                 api_key=api_key,
                 base_url="https://openrouter.ai/api/v1",
+                timeout=API_CALL_TIMEOUT_SECONDS,
+                max_retries=0,
             )
         else:
             self.aclient = None
