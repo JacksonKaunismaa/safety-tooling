@@ -13,6 +13,12 @@ from safetytooling.data_models import LLMResponse
 from ..model import InferenceAPIModel
 from .utils import COMPLETION_MODELS
 
+# Per-call hard timeout. Overridable because the right value is workload-dependent: against a
+# self-hosted vLLM fleet, a request can legitimately queue + generate for >20 min under load,
+# and timing it out abandons work the server keeps computing, then retries it from scratch —
+# a self-sustaining throughput collapse. Set SAFETYTOOLING_API_TIMEOUT high for such fleets.
+API_CALL_TIMEOUT_SECONDS = float(os.environ.get("SAFETYTOOLING_API_TIMEOUT", 1200))
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -151,7 +157,7 @@ class OpenAIModel(InferenceAPIModel):
             # Make the API call outside the lock
             return await asyncio.wait_for(
                 self._make_api_call(prompt, model_id, start, **kwargs),
-                timeout=1200,
+                timeout=API_CALL_TIMEOUT_SECONDS,
             )
 
         async with self.lock_add:
