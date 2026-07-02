@@ -13,11 +13,13 @@ from safetytooling.data_models import LLMResponse
 from ..model import InferenceAPIModel
 from .utils import COMPLETION_MODELS
 
-# Per-call hard timeout. Overridable because the right value is workload-dependent: against a
-# self-hosted vLLM fleet, a request can legitimately queue + generate for >20 min under load,
-# and timing it out abandons work the server keeps computing, then retries it from scratch —
-# a self-sustaining throughput collapse. Set SAFETYTOOLING_API_TIMEOUT high for such fleets.
-API_CALL_TIMEOUT_SECONDS = float(os.environ.get("SAFETYTOOLING_API_TIMEOUT", 1200))
+# Per-call hard timeout. Defaults high (patient clients cost nothing; timeouts cascade):
+# against a self-hosted vLLM fleet, a request can legitimately queue + generate for >20 min
+# under load, and timing it out abandons work the server keeps computing, then retries it
+# from scratch — a self-sustaining throughput collapse. Override via SAFETYTOOLING_API_TIMEOUT
+# if a workload needs to fail faster (e.g. flaky public endpoints where an hour-long hang on a
+# dead connection is worse than a retry).
+API_CALL_TIMEOUT_SECONDS = float(os.environ.get("SAFETYTOOLING_API_TIMEOUT", 3600))
 
 LOGGER = logging.getLogger(__name__)
 
@@ -104,7 +106,7 @@ class OpenAIModel(InferenceAPIModel):
     def _count_prompt_token_capacity(prompt, **kwargs) -> int:
         raise NotImplementedError
 
-    async def _make_api_call(self, prompt, model_id, **params) -> list[LLMResponse]:
+    async def _make_api_call(self, prompt, model_id, start_time, **params) -> list[LLMResponse]:
         raise NotImplementedError
 
     @staticmethod
