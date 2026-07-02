@@ -74,10 +74,20 @@ class OpenAIModel(InferenceAPIModel):
         self.base_url = base_url
         self.openai_api_key = openai_api_key
 
+        # timeout: the SDK's default is 600s with 2 silent internal retries — a request whose
+        # generation legitimately takes >10 min (long CoT on a loaded self-hosted fleet) times
+        # out and re-generates forever, so it must track API_CALL_TIMEOUT_SECONDS, not the
+        # default. max_retries=0 because our outer retry loop (with backoff + logging) owns
+        # retries; hidden SDK retries multiply long timeouts invisibly.
+        client_kwargs: dict = {
+            "base_url": self.base_url,
+            "timeout": API_CALL_TIMEOUT_SECONDS,
+            "max_retries": 0,
+        }
         if openai_api_key:
-            self.aclient = openai.AsyncClient(api_key=openai_api_key, base_url=self.base_url)
+            self.aclient = openai.AsyncClient(api_key=openai_api_key, **client_kwargs)
         elif "OPENAI_API_KEY" in os.environ:
-            self.aclient = openai.AsyncClient(base_url=self.base_url)
+            self.aclient = openai.AsyncClient(**client_kwargs)
         else:
             self.aclient = None
 
