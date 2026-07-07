@@ -1,4 +1,5 @@
 import asyncio
+import random
 import logging
 import os
 import time
@@ -305,7 +306,7 @@ class GeminiModel(InferenceAPIModel):
             except Exception as e:
                 error_info = f"Exception Type: {type(e).__name__}, Error Details: {str(e)}, Traceback: {format_exc()}"
                 LOGGER.warn(f"Encountered API error: {error_info}.\nRetrying in {1.5**i} seconds. (Attempt {i})")
-                await asyncio.sleep(1.5**i)
+                await asyncio.sleep(1.5**i * random.uniform(0.5, 1.5))  # jitter: mass failures must not retry in lockstep
             else:
                 break
 

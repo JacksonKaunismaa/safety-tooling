@@ -1,4 +1,5 @@
 import asyncio
+import random
 import json
 import logging
 import time
@@ -362,7 +363,7 @@ class OpenRouterChatModel(InferenceAPIModel):
                 LOGGER.warn(f"Encountered API error: {error_info}.\nRetrying now. (Attempt {i})")
                 error_list.append(error_info)
                 api_duration = time.time() - api_start
-                await asyncio.sleep(1.5**i)
+                await asyncio.sleep(1.5**i * random.uniform(0.5, 1.5))  # jitter: mass failures must not retry in lockstep
             else:
                 break
 

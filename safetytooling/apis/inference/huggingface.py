@@ -1,4 +1,5 @@
 import asyncio
+import random
 import collections
 import logging
 import pathlib
@@ -173,7 +174,7 @@ class HuggingFaceModel(InferenceAPIModel):
                     await asyncio.sleep(60)
                 else:
                     LOGGER.warn(f"Encountered API error: {error_info}.\nRetrying now. (Attempt {i})")
-                    await asyncio.sleep(1.5**i)
+                    await asyncio.sleep(1.5**i * random.uniform(0.5, 1.5))  # jitter: mass failures must not retry in lockstep
             else:
                 break
 

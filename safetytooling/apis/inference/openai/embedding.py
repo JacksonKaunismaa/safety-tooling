@@ -1,4 +1,5 @@
 import asyncio
+import random
 import logging
 import os
 import time
@@ -70,6 +71,6 @@ class OpenAIEmbeddingModel:
                     f"Exception Type: {type(e).__name__}, Error Details: {str(e)}, Traceback: {traceback.format_exc()}"
                 )
                 LOGGER.warn(f"Encountered API error: {error_info}.\nRetrying now. (Attempt {i})")
-                time.sleep(1.5**i)
+                time.sleep(1.5**i * random.uniform(0.5, 1.5))  # jitter: mass failures must not retry in lockstep
 
         raise RuntimeError(f"Failed to get a response from the API after {max_attempts} attempts.")
