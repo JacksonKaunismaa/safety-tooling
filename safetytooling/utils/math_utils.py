@@ -1,8 +1,9 @@
 from typing import Sequence
 
 import numpy as np
-import scipy.special
-import sklearn.metrics
+
+# scipy/sklearn are imported inside the functions below: together they cost ~100MB RSS and
+# this module rides in with every provider import (openai/chat, huggingface, runpod_vllm).
 
 
 def logprobs_to_logodds(logprobs: np.ndarray, base: float | None = None) -> np.ndarray:
@@ -11,6 +12,8 @@ def logprobs_to_logodds(logprobs: np.ndarray, base: float | None = None) -> np.n
     Assumes logprobs are in log base e.
     If base is None, the natural logarithm is used.
     """
+    import scipy.special
+
     logodds = logprobs - np.log(-scipy.special.expm1(logprobs))
     if base is not None:
         logodds /= np.log(base)
@@ -31,6 +34,8 @@ def logodds_to_probs(logodds: np.ndarray, base: float | None = None) -> np.ndarr
     Converts logodds to logprobs.
     If base is None, the natural logarithm is used.
     """
+    import scipy.special
+
     if base is None:
         return scipy.special.expit(logodds)
 
@@ -38,6 +43,8 @@ def logodds_to_probs(logodds: np.ndarray, base: float | None = None) -> np.ndarr
 
 
 def logsumexp(logprobs: Sequence[float]) -> float:
+    import scipy.special
+
     if len(logprobs) == 0:
         return -np.inf
     return scipy.special.logsumexp(logprobs)
@@ -47,6 +54,8 @@ def roc_curve_with_auc(y_true: np.ndarray, y_score: np.ndarray) -> tuple[np.ndar
     """
     Compute ROC curve and AUC.
     """
+    import sklearn.metrics
+
     fpr, tpr, _ = sklearn.metrics.roc_curve(
         y_true=y_true,
         y_score=y_score,

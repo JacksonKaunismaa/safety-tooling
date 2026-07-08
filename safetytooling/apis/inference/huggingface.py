@@ -1,14 +1,13 @@
 import asyncio
-import random
 import collections
 import logging
 import pathlib
+import random
 import time
 from pathlib import Path
 from traceback import format_exc
 
 import aiohttp
-from transformers import AutoTokenizer
 
 from safetytooling.data_models import LLMResponse, Prompt, StopReason
 from safetytooling.utils import math_utils
@@ -60,6 +59,10 @@ class HuggingFaceModel(InferenceAPIModel):
 
     def count_tokens(self, text, model_name):
         if model_name not in self.tokenizers:
+            # Deferred: transformers pulls torch (~450MB RSS); only HF-endpoint token
+            # counting needs a local tokenizer.
+            from transformers import AutoTokenizer
+
             self.tokenizers[model_name] = AutoTokenizer.from_pretrained(model_name, use_auth_token=self.token)
         tokenizer = self.tokenizers[model_name]
         return len(tokenizer.tokenize(text))

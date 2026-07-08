@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from langchain.tools import BaseTool
+if TYPE_CHECKING:
+    # Type-only: importing langchain costs ~500MB RSS, and at runtime this module only
+    # duck-types tool.name/.description/.args_schema — the real class is never needed.
+    from langchain.tools import BaseTool
 
 
 def make_tools_hashable(tools: list[BaseTool]) -> Optional[tuple[str, ...]]:
@@ -15,7 +20,9 @@ def make_tools_hashable(tools: list[BaseTool]) -> Optional[tuple[str, ...]]:
         signature = {
             "name": tool.name,
             "description": tool.description,
-            "args_schema": tool.args_schema.schema() if tool.args_schema else None,
+            # Upstream assumes the pydantic-model args_schema variant; langchain also types a
+            # dict variant this vendored copy predates.
+            "args_schema": tool.args_schema.schema() if tool.args_schema else None,  # pyright: ignore[reportAttributeAccessIssue]
         }
         tool_signatures.append(json.dumps(signature, sort_keys=True))
 
@@ -30,7 +37,8 @@ def convert_tool_to_anthropic(tool: BaseTool) -> Dict[str, Any]:
 
     if tool.args_schema:
         try:
-            schema = tool.args_schema.schema()
+            # Same pydantic-variant assumption as make_tools_hashable above.
+            schema = tool.args_schema.schema()  # pyright: ignore[reportAttributeAccessIssue]
             input_schema = {
                 "type": "object",
                 "properties": schema.get("properties", {}),
@@ -67,7 +75,8 @@ def convert_tool_to_openai(tool: BaseTool) -> Dict[str, Any]:
 
     if tool.args_schema:
         try:
-            schema = tool.args_schema.schema()
+            # Same pydantic-variant assumption as make_tools_hashable above.
+            schema = tool.args_schema.schema()  # pyright: ignore[reportAttributeAccessIssue]
             parameters = {
                 "type": "object",
                 "properties": schema.get("properties", {}),

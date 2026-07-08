@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import collections
 import copy
 import json
@@ -5,6 +7,7 @@ import logging
 import os
 import time
 from traceback import format_exc
+from typing import TYPE_CHECKING
 
 import httpx
 import openai
@@ -12,8 +15,11 @@ import openai.types
 import openai.types.chat
 import pydantic
 import requests
-from langchain.tools import BaseTool
 from tenacity import retry, stop_after_attempt, wait_fixed
+
+if TYPE_CHECKING:
+    # Type-only: langchain costs ~500MB RSS; tools are duck-typed (.name/.ainvoke) at runtime.
+    from langchain.tools import BaseTool
 
 from safetytooling.data_models import ChatMessage, LLMResponse, MessageRole, Prompt, Usage
 from safetytooling.utils import math_utils

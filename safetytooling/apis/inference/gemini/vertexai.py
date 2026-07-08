@@ -1,17 +1,20 @@
+from __future__ import annotations
+
 import asyncio
-import random
 import logging
 import os
+import random
 import time
 from pathlib import Path
 from traceback import format_exc
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
-import google.generativeai as genai
-import googleapiclient
-import vertexai
-from google.api_core.exceptions import InvalidArgument
-from vertexai.generative_models import GenerationConfig, GenerativeModel, HarmBlockThreshold, HarmCategory
+if TYPE_CHECKING:
+    import google.generativeai as genai
+    import googleapiclient
+    import vertexai
+    from google.api_core.exceptions import InvalidArgument
+    from vertexai.generative_models import GenerationConfig, GenerativeModel, HarmBlockThreshold, HarmCategory
 
 from safetytooling.data_models import GeminiStopReason, LLMResponse, Prompt
 
@@ -29,6 +32,23 @@ from ....data_models.utils import (
 from ..model import InferenceAPIModel
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _load_google() -> None:
+    """Bind the google/vertexai stack into module globals on first use.
+
+    Same rationale as gemini/genai.py: hundreds of MB of grpc/protobuf imports behind a
+    provider that InferenceAPI constructs unconditionally but most processes never call.
+    """
+    global genai, googleapiclient, vertexai, InvalidArgument
+    global GenerationConfig, GenerativeModel, HarmBlockThreshold, HarmCategory
+    if "vertexai" in globals():
+        return
+    import google.generativeai as genai
+    import googleapiclient
+    import vertexai
+    from google.api_core.exceptions import InvalidArgument
+    from vertexai.generative_models import GenerationConfig, GenerativeModel, HarmBlockThreshold, HarmCategory
 
 
 class GeminiVertexAIModel(InferenceAPIModel):
@@ -49,17 +69,26 @@ class GeminiVertexAIModel(InferenceAPIModel):
             "max_tokens": "max_output_tokens",
         }
 
-        # Maps simple input of the safety threshold values (None, few, some, most) to the HarmBlockThreshold class values
-        self.map_safety_block_name = {
-            None: HarmBlockThreshold.BLOCK_NONE,
-            "few": HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            "some": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            "most": HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-        }
+        # Maps simple input of the safety threshold values (None, few, some, most) to the
+        # HarmBlockThreshold class values; built by _ensure_google (needs the deferred import).
+        self.map_safety_block_name = None
 
         self.is_initialized = False
-        if "GOOGLE_PROJECT_ID" in os.environ and "GOOGLE_PROJECT_REGION" in os.environ:
-            vertexai.init(project=os.environ["GOOGLE_PROJECT_ID"], location=os.environ["GOOGLE_PROJECT_REGION"])
+        self._project_id = os.environ.get("GOOGLE_PROJECT_ID")
+        self._region = os.environ.get("GOOGLE_PROJECT_REGION")
+
+    def _ensure_google(self) -> None:
+        """First-use hook: load the deferred google deps and finish one-time client setup."""
+        _load_google()
+        if self.map_safety_block_name is None:
+            self.map_safety_block_name = {
+                None: HarmBlockThreshold.BLOCK_NONE,
+                "few": HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                "some": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+                "most": HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+            }
+        if not self.is_initialized and self._project_id is not None and self._region is not None:
+            vertexai.init(project=self._project_id, location=self._region)
             self.is_initialized = True
 
     @staticmethod
@@ -98,7 +127,7 @@ class GeminiVertexAIModel(InferenceAPIModel):
         prompt: Prompt,
         generation_config: GenerationConfig = None,
     ) -> str:
-
+        self._ensure_google()
         if generation_config:
             model = GenerativeModel(model_name=model_id, generation_config=generation_config)
         else:
@@ -119,6 +148,7 @@ class GeminiVertexAIModel(InferenceAPIModel):
         is_valid: Callable[[str], bool] = lambda x: x.stop_reason != GeminiStopReason.RECITATION,
         **kwargs,
     ) -> list[LLMResponse]:
+        self._ensure_google()
         if not self.is_initialized:
             raise RuntimeError(
                 "VertexAI is not initialized. Please set GOOGLE_PROJECT_ID and GOOGLE_PROJECT_REGION in .env before running your script"
@@ -209,6 +239,7 @@ class GeminiVertexAIModel(InferenceAPIModel):
     ) -> List[LLMResponse]:
         start = time.time()
 
+        self._ensure_google()
         self.add_model_id(model_id)
 
         async def attempt_api_call(model_id):

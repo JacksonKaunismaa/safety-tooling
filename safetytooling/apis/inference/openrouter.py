@@ -1,20 +1,25 @@
+from __future__ import annotations
+
 import asyncio
-import random
 import json
 import logging
+import random
 import time
 from pathlib import Path
 from traceback import format_exc
+from typing import TYPE_CHECKING
 
-from langchain.tools import BaseTool
 from openai import AsyncOpenAI, BadRequestError
+
+if TYPE_CHECKING:
+    # Type-only: langchain costs ~500MB RSS; tools are duck-typed (.name/.ainvoke) at runtime.
+    from langchain.tools import BaseTool
 
 from safetytooling.data_models import ChatMessage, LLMResponse, MessageRole, Prompt
 from safetytooling.utils.tool_utils import convert_tools_to_openai
 
-from .openai.base import API_CALL_TIMEOUT_SECONDS
-
 from .model import InferenceAPIModel
+from .openai.base import API_CALL_TIMEOUT_SECONDS
 
 OPENROUTER_MODELS = {
     "x-ai/grok-4",

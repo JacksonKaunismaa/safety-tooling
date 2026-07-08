@@ -1,15 +1,18 @@
+from __future__ import annotations
+
 import asyncio
-import random
 import logging
 import os
+import random
 import time
 from pathlib import Path
 from traceback import format_exc
-from typing import Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
-import google.generativeai as genai
-from google.api_core.exceptions import InvalidArgument
-from google.generativeai.types import GenerationConfig, HarmBlockThreshold, HarmCategory
+if TYPE_CHECKING:
+    import google.generativeai as genai
+    from google.api_core.exceptions import InvalidArgument
+    from google.generativeai.types import GenerationConfig, HarmBlockThreshold, HarmCategory
 
 from safetytooling.data_models import GeminiStopReason, LLMResponse, Prompt
 
@@ -25,6 +28,21 @@ from ....data_models.utils import (
 from ..model import InferenceAPIModel
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _load_google() -> None:
+    """Bind the google.generativeai stack into module globals on first use.
+
+    The grpc/protobuf import chain costs hundreds of MB of RSS, and InferenceAPI constructs
+    GeminiModel unconditionally — so the imports must not run at module or construction
+    time, only when a gemini call actually happens.
+    """
+    global genai, InvalidArgument, GenerationConfig, HarmBlockThreshold, HarmCategory
+    if "genai" in globals():
+        return
+    import google.generativeai as genai
+    from google.api_core.exceptions import InvalidArgument
+    from google.generativeai.types import GenerationConfig, HarmBlockThreshold, HarmCategory
 
 
 class GeminiModel(InferenceAPIModel):
@@ -55,16 +73,24 @@ class GeminiModel(InferenceAPIModel):
             "max_tokens": "max_output_tokens",
         }
 
-        # Maps simple input of the safety threshold values (None, few, some, most) to the HarmBlockThreshold class values
-        self.map_safety_block_name = {
-            None: HarmBlockThreshold.BLOCK_NONE,
-            "few": HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            "some": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            "most": HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-        }
+        # Maps simple input of the safety threshold values (None, few, some, most) to the
+        # HarmBlockThreshold class values; built by _ensure_google (needs the deferred import).
+        self.map_safety_block_name = None
         self.is_initialized = False
-        if api_key_tag in os.environ:
-            genai.configure(api_key=os.environ[api_key_tag])
+        self._api_key = os.environ.get(api_key_tag)
+
+    def _ensure_google(self) -> None:
+        """First-use hook: load the deferred google deps and finish one-time client setup."""
+        _load_google()
+        if self.map_safety_block_name is None:
+            self.map_safety_block_name = {
+                None: HarmBlockThreshold.BLOCK_NONE,
+                "few": HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                "some": HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+                "most": HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+            }
+        if not self.is_initialized and self._api_key is not None:
+            genai.configure(api_key=self._api_key)
             self.is_initialized = True
 
     @staticmethod
@@ -104,6 +130,7 @@ class GeminiModel(InferenceAPIModel):
         safety_settings: dict[str, HarmBlockThreshold],
         generation_config: GenerationConfig = None,
     ) -> Tuple[str, List[genai.types.file_types.File]]:
+        self._ensure_google()
         if not self.is_initialized:
             raise RuntimeError(
                 "Gemini is not initialized. Please set GOOGLE_API_KEY in .env before running your script"
@@ -268,6 +295,7 @@ class GeminiModel(InferenceAPIModel):
     ) -> List[LLMResponse]:
         start = time.time()
 
+        self._ensure_google()
         self.add_model_id(model_id)
 
         async def attempt_api_call(model_id):

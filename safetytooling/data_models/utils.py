@@ -6,8 +6,6 @@ from enum import Enum
 from functools import partial
 from typing import List
 
-import google.generativeai as genai
-
 # from google.generativeai.types import HarmCategory, HarmProbability
 from pydantic import BaseModel
 
@@ -260,6 +258,10 @@ def get_block_reason(reason_code):
 
 # Define a function to delete a file (not async)
 def delete_genai_file(file):
+    # Deferred: google.generativeai costs ~50MB+ RSS and data_models is imported by every
+    # safetytooling consumer; only gemini file cleanup needs it.
+    import google.generativeai as genai
+
     try:
         genai.delete_file(file)
         print(f"Successfully deleted file: {file}")

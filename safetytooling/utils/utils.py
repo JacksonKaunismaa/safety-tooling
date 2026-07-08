@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import datetime
 import hashlib
@@ -9,13 +11,17 @@ import textwrap
 import threading
 from collections import defaultdict
 from pathlib import Path
-from typing import IO, Any, Callable
+from typing import IO, TYPE_CHECKING, Any, Callable
 
 import dotenv
-import git
 import jsonlines
-import pandas as pd
 import yaml
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+# git (gitpython) and pandas are imported inside their single-use functions below: together
+# they cost ~100MB RSS and this module is imported by every safetytooling consumer.
 
 LOGGER = logging.getLogger(__name__)
 
@@ -30,6 +36,8 @@ LOGGING_LEVELS = {
 
 def get_repo_root() -> Path:
     """Returns repo root (relative to this file)."""
+    import git
+
     return Path(
         git.Repo(
             __file__,
@@ -282,6 +290,8 @@ def load_jsonl_df(input_file: Path) -> pd.DataFrame:
     """
     Function to load results from gemini inference. We can't just use pd.read_jsonl because of issues with nested dictionaries
     """
+    import pandas as pd
+
     try:
         df = pd.read_json(input_file, lines=True)
 

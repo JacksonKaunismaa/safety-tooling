@@ -7,13 +7,16 @@ import time
 from collections import defaultdict
 from itertools import chain
 from pathlib import Path
-from typing import Awaitable, Callable, Literal
+from typing import TYPE_CHECKING, Awaitable, Callable, Literal
 
-import matplotlib.pyplot as plt
 import numpy as np
-from langchain.tools import BaseTool
 from tqdm.auto import tqdm
 from typing_extensions import Self
+
+if TYPE_CHECKING:
+    # Type-only: langchain costs ~500MB RSS to import and BaseTool is only ever an
+    # annotation here (tools pass through to tool_utils, which duck-types them).
+    from langchain.tools import BaseTool
 
 from safetytooling.data_models import (
     GEMINI_MODELS,
@@ -770,6 +773,8 @@ class InferenceAPI:
 
     def log_model_timings(self):
         if len(self.model_timings) > 0:
+            import matplotlib.pyplot as plt  # deferred: only this diagnostic plot needs it
+
             plt.figure(figsize=(10, 6))
             for model in self.model_timings:
                 timings = np.array(self.model_timings[model])

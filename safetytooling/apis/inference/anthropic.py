@@ -1,17 +1,23 @@
+from __future__ import annotations
+
 import asyncio
-import random
 import copy
 import json
 import logging
+import random
 import time
 from pathlib import Path
 from traceback import format_exc
+from typing import TYPE_CHECKING
 
 import anthropic.types
 from anthropic import AsyncAnthropic
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
-from langchain.tools import BaseTool
+
+if TYPE_CHECKING:
+    # Type-only: langchain costs ~500MB RSS; tools are duck-typed (.name/.ainvoke) at runtime.
+    from langchain.tools import BaseTool
 
 from safetytooling.data_models import ChatMessage, LLMResponse, MessageRole, Prompt, Usage
 from safetytooling.utils.tool_utils import convert_tools_to_anthropic

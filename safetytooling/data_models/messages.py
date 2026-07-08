@@ -12,16 +12,9 @@ from typing_extensions import Self
 if TYPE_CHECKING:  # avoids circular import
     from .inference import LLMResponse
 
-from ..utils.audio_utils import (
-    get_audio_data,
-    prepare_audio_part,
-    prepare_openai_s2s_audio,
-)
-from ..utils.image_utils import (
-    get_image_file_type,
-    image_to_base64,
-    prepare_gemini_image,
-)
+# audio_utils/image_utils are imported inside the audio/image formatting methods below:
+# their librosa/cv2/vertexai import chain costs ~200MB RSS, and data_models is imported by
+# every safetytooling consumer while audio/image prompts are rare.
 from ..utils.special_prompts import gopher_base_model_prompt
 from .hashable import HashableBaseModel
 
@@ -119,6 +112,8 @@ class ChatMessage(HashableBaseModel):
             return {"role": self.role.value, "content": self.content}
 
     def openai_image_format(self):
+        from ..utils.image_utils import image_to_base64  # deferred: heavy cv2/vertexai chain
+
         # for images the format involves including images and user text in the same message
         if self.role == MessageRole.image:
             base64_image = image_to_base64(self.content)
@@ -138,6 +133,8 @@ class ChatMessage(HashableBaseModel):
         return anthropic.types.MessageParam(content=self.content, role=self.role.value)
 
     def anthropic_image_format(self) -> Dict:
+        from ..utils.image_utils import get_image_file_type, image_to_base64  # deferred: heavy cv2/vertexai chain
+
         if self.role == MessageRole.image:
             base64_image = image_to_base64(self.content)
             image_type = get_image_file_type(self.content)
@@ -372,6 +369,9 @@ class Prompt(HashableBaseModel):
         if self.is_none_in_messages():
             raise ValueError(f"Gemini chat prompts cannot have a None role. Got {self.messages}")
 
+        from ..utils.audio_utils import prepare_audio_part  # deferred: heavy librosa chain
+        from ..utils.image_utils import prepare_gemini_image  # deferred: heavy cv2/vertexai chain
+
         messages = []
         system_prompt = None
 
@@ -388,6 +388,8 @@ class Prompt(HashableBaseModel):
         return messages, system_prompt
 
     def openai_s2s_format(self) -> List[Any]:
+        from ..utils.audio_utils import prepare_openai_s2s_audio  # deferred: heavy librosa chain
+
         messages = []
 
         audio_input = False
@@ -569,6 +571,8 @@ class BatchPrompt(pydantic.BaseModel):
         return cls(prompts=prompts)
 
     def batch_format(self) -> Tuple[np.ndarray, List]:
+        from ..utils.audio_utils import get_audio_data  # deferred: heavy librosa chain
+
         audio_messages = []
         text_messages = []
         system_messages = []
