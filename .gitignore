@@ -28,3 +28,6 @@ SECRETS
 .env
 __pycache__/
 SECRETS.test
+
+# Claude Code local artifacts (bash history logs, plans)
+.claude/
