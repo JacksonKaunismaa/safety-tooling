@@ -59,6 +59,16 @@ def _provider_on(name: str) -> bool:
     return _ENABLED_PROVIDERS is None or name in _ENABLED_PROVIDERS
 
 
+def _isa(obj, cls) -> bool:
+    """isinstance() that treats a disabled provider's None placeholder as no-match.
+
+    __call__ routes by isinstance(model_class, <ProviderModel>); with the provider
+    gate on, unimported provider classes are None and bare isinstance raises
+    TypeError. An object is never an instance of a class that was never imported.
+    """
+    return cls is not None and isinstance(obj, cls)
+
+
 if _provider_on("anthropic"):
     from .anthropic import ANTHROPIC_MODELS, AnthropicChatModel
 else:
@@ -544,12 +554,12 @@ class InferenceAPI:
                     prompt = prompt
 
         if (
-            isinstance(model_class, AnthropicChatModel)
-            or isinstance(model_class, HuggingFaceModel)
-            or isinstance(model_class, OpenRouterChatModel)
-            or isinstance(model_class, VLLMChatModel)
+            _isa(model_class, AnthropicChatModel)
+            or _isa(model_class, HuggingFaceModel)
+            or _isa(model_class, OpenRouterChatModel)
+            or _isa(model_class, VLLMChatModel)
         ):
-            if isinstance(model_class, HuggingFaceModel):
+            if _isa(model_class, HuggingFaceModel):
                 kwargs["model_url"] = huggingface_model_url
             # Anthropic chat doesn't support generating multiple candidates at once, so we have to do it manually
             candidate_responses = list(
@@ -570,7 +580,7 @@ class InferenceAPI:
                     )
                 )
             )
-        elif isinstance(model_class, GeminiModel) or isinstance(model_class, GeminiVertexAIModel):
+        elif _isa(model_class, GeminiModel) or _isa(model_class, GeminiVertexAIModel):
             candidate_responses = []
 
             for _ in range(num_candidates):
@@ -588,7 +598,7 @@ class InferenceAPI:
                         **kwargs,
                     )
                     candidate_responses.extend(response)
-        elif isinstance(model_class, BatchModel):
+        elif _isa(model_class, BatchModel):
             if not isinstance(prompt, BatchPrompt):
                 raise ValueError(f"{model_class.__class__.__name__} requires a BatchPrompt input")
             candidate_responses = model_class(
@@ -610,7 +620,7 @@ class InferenceAPI:
             else:
                 candidate_responses = candidate_responses
 
-        elif isinstance(model_class, OpenAIS2SModel):
+        elif _isa(model_class, OpenAIS2SModel):
             candidate_responses = []
             for _ in range(num_candidates):
                 async with self.openai_s2s_semaphore:
@@ -626,7 +636,7 @@ class InferenceAPI:
                         **kwargs,
                     )
                     candidate_responses.extend(response)
-        elif isinstance(model_class, TogetherChatModel):
+        elif _isa(model_class, TogetherChatModel):
             candidate_responses = await model_class(
                 model_id,
                 prompt,
@@ -637,7 +647,7 @@ class InferenceAPI:
                 **kwargs,
             )
 
-        elif isinstance(model_class, VLLMChatModel):
+        elif _isa(model_class, VLLMChatModel):
             candidate_responses = await model_class(
                 model_id,
                 prompt,
