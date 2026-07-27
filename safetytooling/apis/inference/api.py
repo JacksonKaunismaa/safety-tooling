@@ -33,23 +33,69 @@ from safetytooling.data_models import (
 from safetytooling.utils.tool_utils import make_tools_hashable
 from safetytooling.utils.utils import get_repo_root
 
-from .anthropic import ANTHROPIC_MODELS, AnthropicChatModel
 from .cache_manager import BaseCacheManager, CacheBackend, get_cache_manager
-from .gemini.genai import GeminiModel
-from .gemini.vertexai import GeminiVertexAIModel
-from .gray_swan import GRAYSWAN_MODELS, GraySwanChatModel
-from .huggingface import HUGGINGFACE_MODELS, HuggingFaceModel
 from .model import InferenceAPIModel
 from .openai.chat import OpenAIChatModel
 from .openai.completion import OpenAICompletionModel
 from .openai.embedding import OpenAIEmbeddingModel
 from .openai.moderation import OpenAIModerationModel
-from .openai.s2s import OpenAIS2SModel, S2SRateLimiter
 from .openai.utils import COMPLETION_MODELS, GPT_CHAT_MODELS, S2S_MODELS, is_finetune_gpt_model
-from .openrouter import OPENROUTER_MODELS, OpenRouterChatModel
-from .opensource.batch_inference import BATCHED_MODELS, BatchModel
-from .runpod_vllm import VLLM_MODELS, VLLMChatModel
-from .together import TOGETHER_MODELS, TogetherChatModel
+
+# SAFETYTOOLING_PROVIDERS (2026-07-27): comma-list of the heavy optional providers to
+# import+construct, e.g. "openai,openrouter". Unset/empty = ALL (exact pre-patch
+# behavior). Importing every provider SDK costs ~35+MB RSS per process
+# (together/gray_swan/gemini/huggingface/redis/aiohttp/pydub/pyarrow), which adds up
+# fast across worker fleets that only ever touch one or two providers.
+# The openai chat/completion/moderation/embedding clients (+ deepseek, which is an
+# OpenAI-protocol client) are core and ALWAYS on. A model routed to a disabled provider
+# raises with the env name in the message — nothing misroutes silently.
+_providers_env = os.environ.get("SAFETYTOOLING_PROVIDERS", "").strip()
+_ENABLED_PROVIDERS: frozenset[str] | None = (
+    frozenset(p.strip() for p in _providers_env.split(",") if p.strip()) if _providers_env else None
+)
+
+
+def _provider_on(name: str) -> bool:
+    return _ENABLED_PROVIDERS is None or name in _ENABLED_PROVIDERS
+
+
+if _provider_on("anthropic"):
+    from .anthropic import ANTHROPIC_MODELS, AnthropicChatModel
+else:
+    ANTHROPIC_MODELS, AnthropicChatModel = frozenset(), None
+if _provider_on("gemini"):
+    from .gemini.genai import GeminiModel
+    from .gemini.vertexai import GeminiVertexAIModel
+else:
+    GeminiModel, GeminiVertexAIModel = None, None
+if _provider_on("grayswan"):
+    from .gray_swan import GRAYSWAN_MODELS, GraySwanChatModel
+else:
+    GRAYSWAN_MODELS, GraySwanChatModel = frozenset(), None
+if _provider_on("huggingface"):
+    from .huggingface import HUGGINGFACE_MODELS, HuggingFaceModel
+else:
+    HUGGINGFACE_MODELS, HuggingFaceModel = frozenset(), None
+if _provider_on("openai_s2s"):
+    from .openai.s2s import OpenAIS2SModel, S2SRateLimiter  # noqa: F401 (re-export)
+else:
+    OpenAIS2SModel, S2SRateLimiter = None, None
+if _provider_on("openrouter"):
+    from .openrouter import OPENROUTER_MODELS, OpenRouterChatModel
+else:
+    OPENROUTER_MODELS, OpenRouterChatModel = frozenset(), None
+if _provider_on("batch_gpu"):
+    from .opensource.batch_inference import BATCHED_MODELS, BatchModel
+else:
+    BATCHED_MODELS, BatchModel = frozenset(), None
+if _provider_on("vllm"):
+    from .runpod_vllm import VLLM_MODELS, VLLMChatModel
+else:
+    VLLM_MODELS, VLLMChatModel = frozenset(), None
+if _provider_on("together"):
+    from .together import TOGETHER_MODELS, TogetherChatModel
+else:
+    TOGETHER_MODELS, TogetherChatModel = frozenset(), None
 
 LOGGER = logging.getLogger(__name__)
 
@@ -129,7 +175,7 @@ class InferenceAPI:
         self.init_time = time.time()
         self.current_time = time.time()
         self.n_calls = 0
-        self.gpt_4o_rate_limiter = S2SRateLimiter(self.gpt4o_s2s_rpm_cap)
+        self.gpt_4o_rate_limiter = S2SRateLimiter(self.gpt4o_s2s_rpm_cap) if S2SRateLimiter is not None else None
         self.print_prompt_and_response = print_prompt_and_response
         self.use_vllm_if_model_not_found = use_vllm_if_model_not_found
         self.vllm_base_url = vllm_base_url
@@ -182,47 +228,47 @@ class InferenceAPI:
         self._openai_moderation = OpenAIModerationModel()
 
         self._openai_embedding = OpenAIEmbeddingModel(batch_size=oai_embedding_batch_size)
-        self._openai_s2s = OpenAIS2SModel()
+        self._openai_s2s = OpenAIS2SModel() if OpenAIS2SModel is not None else None
 
-        self._anthropic_chat = AnthropicChatModel(
+        self._anthropic_chat = None if AnthropicChatModel is None else AnthropicChatModel(
             num_threads=self.anthropic_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             anthropic_api_key=anthropic_api_key,
         )
 
-        self._huggingface = HuggingFaceModel(
+        self._huggingface = None if HuggingFaceModel is None else HuggingFaceModel(
             num_threads=self.huggingface_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             token=os.environ.get("HF_TOKEN", None),
         )
 
-        self._gray_swan = GraySwanChatModel(
+        self._gray_swan = None if GraySwanChatModel is None else GraySwanChatModel(
             num_threads=self.gray_swan_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             api_key=os.environ.get("GRAYSWAN_API_KEY", None),
         )
 
-        self._together = TogetherChatModel(
+        self._together = None if TogetherChatModel is None else TogetherChatModel(
             num_threads=self.together_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             api_key=os.environ.get("TOGETHER_API_KEY", None),
         )
 
-        self._openrouter = OpenRouterChatModel(
+        self._openrouter = None if OpenRouterChatModel is None else OpenRouterChatModel(
             num_threads=self.openrouter_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             api_key=os.environ.get("OPENROUTER_API_KEY", None),
         )
 
-        self._gemini_vertex = GeminiVertexAIModel(prompt_history_dir=self.prompt_history_dir)
-        self._gemini_genai = GeminiModel(
+        self._gemini_vertex = None if GeminiVertexAIModel is None else GeminiVertexAIModel(prompt_history_dir=self.prompt_history_dir)
+        self._gemini_genai = None if GeminiModel is None else GeminiModel(
             prompt_history_dir=self.prompt_history_dir,
             recitation_rate_check_volume=self.gemini_recitation_rate_check_volume,
             recitation_rate_threshold=self.gemini_recitation_rate_threshold,
             empty_completion_threshold=self.empty_completion_threshold,
         )
 
-        self._vllm = VLLMChatModel(
+        self._vllm = None if VLLMChatModel is None else VLLMChatModel(
             num_threads=vllm_num_threads,
             prompt_history_dir=self.prompt_history_dir,
             vllm_base_url=self.vllm_base_url,
@@ -285,9 +331,19 @@ class InferenceAPI:
 
     def select_gemini_model(self, use_vertexai: bool = False):
         if use_vertexai:
-            return self._gemini_vertex
+            return self._require_provider(self._gemini_vertex, "gemini")
         else:
-            return self._gemini_genai
+            return self._require_provider(self._gemini_genai, "gemini")
+
+    @staticmethod
+    def _require_provider(model_obj, name: str):
+        """Raise clearly when a model routes to a provider disabled by SAFETYTOOLING_PROVIDERS."""
+        if model_obj is None:
+            raise ValueError(
+                f"provider {name!r} is disabled by SAFETYTOOLING_PROVIDERS="
+                f"{os.environ.get('SAFETYTOOLING_PROVIDERS')!r} — unset it or add {name!r}"
+            )
+        return model_obj
 
     def model_id_to_class(
         self, model_id: str, gemini_use_vertexai: bool = False, force_provider: str | None = None
@@ -297,17 +353,17 @@ class InferenceAPI:
             if force_provider == "batch_gpu":
                 return self._batch_models[model_id]
             else:
-                return self.provider_to_class[force_provider]
+                return self._require_provider(self.provider_to_class[force_provider], "" + force_provider + "")
         elif model_id in COMPLETION_MODELS:
             return self._openai_completion
         elif model_id in GPT_CHAT_MODELS or model_id.startswith("gpt") or is_finetune_gpt_model(model_id):
             return self._openai_chat
         elif model_id in ANTHROPIC_MODELS or model_id.startswith("claude"):
-            return self._anthropic_chat
+            return self._require_provider(self._anthropic_chat, "anthropic")
         elif model_id in HUGGINGFACE_MODELS:
-            return self._huggingface
+            return self._require_provider(self._huggingface, "huggingface")
         elif model_id in GRAYSWAN_MODELS:
-            return self._gray_swan
+            return self._require_provider(self._gray_swan, "grayswan")
         elif model_id in GEMINI_MODELS or model_id.startswith("gemini"):
             return self.select_gemini_model(gemini_use_vertexai)
         elif model_id in BATCHED_MODELS:
@@ -315,17 +371,17 @@ class InferenceAPI:
             assert class_for_model is not None, f"Error loading class for {model_id}"
             return class_for_model
         elif model_id in S2S_MODELS:
-            return self._openai_s2s
+            return self._require_provider(self._openai_s2s, "openai_s2s")
         elif model_id in TOGETHER_MODELS or model_id.startswith("scalesafetyresearch"):
-            return self._together
+            return self._require_provider(self._together, "together")
         elif model_id in OPENROUTER_MODELS or model_id.startswith("openrouter/"):
-            return self._openrouter
+            return self._require_provider(self._openrouter, "openrouter")
         elif model_id in VLLM_MODELS:
-            return self._vllm
+            return self._require_provider(self._vllm, "vllm")
         elif model_id in DEEPSEEK_MODELS:
             return self._deepseek
         elif self.use_vllm_if_model_not_found:
-            return self._vllm
+            return self._require_provider(self._vllm, "vllm")
         raise ValueError(
             f"Invalid model id: {model_id}. Pass openai_completion, openai_chat, anthropic, huggingface, gemini, batch_gpu, openai_s2s, together, openrouter, vllm, or deepseek to force a provider."
         )

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import List, Tuple, Union
 
 import filelock
-import redis
 
 from safetytooling.data_models import (
     BatchPrompt,
@@ -433,6 +432,10 @@ class RedisCacheManager(BaseCacheManager):
 
     def _connect(self):
         """Establish a connection to the Redis server."""
+        # Lazy: redis is optional (only the REDIS backend needs it) and its import
+        # costs RSS in every process otherwise (2026-07-27 provider-gate patch).
+        import redis
+
         return redis.Redis(**self.redis_config)
 
     def _make_key(self, base_key: str) -> str:
